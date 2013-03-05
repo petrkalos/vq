@@ -5,6 +5,9 @@
 *.yuv
 *.bin
 
+#matlab files
+*.asv
+
 # User-specific files
 *.suo
 *.user
