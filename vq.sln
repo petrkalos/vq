@@ -5,7 +5,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kmeans", "kmeans\kmeans.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "quantizer", "quantizer\quantizer.vcxproj", "{76A95720-78BB-4B18-910C-232FB815B8AB}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "huffman", "huffman\huffman.vcxproj", "{CE5BF148-8A8F-45B9-B79C-7F19F0E1B261}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "context", "context\context.vcxproj", "{FB60227B-9297-4AD6-9A15-42D125331B52}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,10 +21,10 @@ Global
 		{76A95720-78BB-4B18-910C-232FB815B8AB}.Debug|x64.Build.0 = Debug|x64
 		{76A95720-78BB-4B18-910C-232FB815B8AB}.Release|x64.ActiveCfg = Release|x64
 		{76A95720-78BB-4B18-910C-232FB815B8AB}.Release|x64.Build.0 = Release|x64
-		{CE5BF148-8A8F-45B9-B79C-7F19F0E1B261}.Debug|x64.ActiveCfg = Debug|x64
-		{CE5BF148-8A8F-45B9-B79C-7F19F0E1B261}.Debug|x64.Build.0 = Debug|x64
-		{CE5BF148-8A8F-45B9-B79C-7F19F0E1B261}.Release|x64.ActiveCfg = Release|x64
-		{CE5BF148-8A8F-45B9-B79C-7F19F0E1B261}.Release|x64.Build.0 = Release|x64
+		{FB60227B-9297-4AD6-9A15-42D125331B52}.Debug|x64.ActiveCfg = Debug|x64
+		{FB60227B-9297-4AD6-9A15-42D125331B52}.Debug|x64.Build.0 = Debug|x64
+		{FB60227B-9297-4AD6-9A15-42D125331B52}.Release|x64.ActiveCfg = Release|x64
+		{FB60227B-9297-4AD6-9A15-42D125331B52}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
