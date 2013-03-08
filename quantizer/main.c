@@ -72,7 +72,7 @@ int main(int argc, char *argv[]){
 
 	int dims = 16;
 	int num_of_clusters = 32768;
-	int num_of_frames = 260;
+	int num_of_frames = 2600;
 	int dim = dims*dims;
 	int frame,i;
 	char file[100];

@@ -1,7 +1,15 @@
-function [ splits,out ] = split( cnt,n )
+function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
 %SPLIT Summary of this function goes here
 %   Detailed explanation goes here
+    
+    disp('\n');
 
+    %cblen = str2num(cblen);
+    %dim = str2num(dim);
+    %n = str2num(n);
+    
+    [~, cnt, energy] = readcb(cbfile,cntfile,cblen,dim);
+    
     s = sum(cnt);
     step = s/n;
     
@@ -39,5 +47,8 @@ function [ splits,out ] = split( cnt,n )
         line([splits(i) splits(i)],[0 max(cnt)],'Color','r');
     end
     
+    disp(energy(splits));
+    
+    exit(1);
 end
 
