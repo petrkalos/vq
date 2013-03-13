@@ -2129,7 +2129,7 @@ int start_kmeans(int dim,int num_of_clusters,int num_of_frames,int type,char *fi
 		//ret_val = kmeans_iterate2_h(clusters, training, indices, distances, cluster_count, new_clusters, dim, hyperplane, num_of_vectors, &diff_count);
 #endif
 		
-		if(iter%20==0 || diff_count == 0){
+		if(iter%50==0 || diff_count == 0){
 			if(fopen_s(&fp1,cb_file,"wb")!=0)
 				printf("Error creating codebook file %s\n",cb_file);
 

@@ -16,38 +16,26 @@ typedef unsigned __int64 int64;
 #define C3(x) x>310 && x<=5179
 #define C4(x) x>5179
 
-#define NOC 4
-
 const int XSIZE = 720;
 const int YSIZE = 480;
 
-
-typedef struct{
-	short *resi;
-	char category;
-	int index;
-}block;
-
-void init_blocks(block *****resi,int num_of_frames,int dims){
+void malloc4D(short *****resi,int num_of_frames,int dims){
 	int frame,m,n;
-	int dim = dims*dims;
-	*resi = (block ****) malloc(sizeof(short ***)*num_of_frames);
+
+	*resi = (short ****) malloc(sizeof(short ***)*num_of_frames);
 	
 	for(frame=0;frame<num_of_frames;frame++){
-		(*resi)[frame] = (block ***) malloc(sizeof(block **)*YSIZE/dims);
+		(*resi)[frame] = (short ***) malloc(sizeof(short **)*YSIZE/dims);
 		for(m=0;m<YSIZE/dims;m++){
-			(*resi)[frame][m] = (block **) malloc(sizeof(block *)*XSIZE/dims);
+			(*resi)[frame][m] = (short **) malloc(sizeof(short *)*XSIZE/dims);
 			for(n=0;n<XSIZE/dims;n++){
-				(*resi)[frame][m][n] = (block *) _aligned_malloc(sizeof(block),16);
-				(*resi)[frame][m][n]->resi = (short *) malloc(sizeof(short)*dim);
-				(*resi)[frame][m][n]->category = -1;
-				(*resi)[frame][m][n]->index = -1;
+				(*resi)[frame][m][n] = (short *) _aligned_malloc(sizeof(short)*dims*dims,16);
 			}
 		}
 	}
 }
 
-void init_codebook(short ***cb,int num_of_vectors,int dim){
+void malloc2D(short ***cb,int num_of_vectors,int dim){
 	int i;
 	*cb = (short **) malloc(sizeof(short *)*num_of_vectors);
 	
@@ -55,49 +43,45 @@ void init_codebook(short ***cb,int num_of_vectors,int dim){
 		(*cb)[i]= (short *)_aligned_malloc(sizeof(short)*dim,16);
 }
 
-void init_counters(uint64 ***cnt,int num_of_contexts,int num_of_vectors){
+void malloc2D_64(uint64 ***cb,int num_of_vectors,int dim){
 	int i;
-	*cnt = (uint64 **) malloc(sizeof(uint64 *)*num_of_contexts);
+	*cb = (uint64 **) malloc(sizeof(uint64 *)*num_of_vectors);
 	
-	for(i=0;i<num_of_contexts;i++)
-		(*cnt)[i]= (uint64 *)calloc(num_of_vectors,sizeof(uint64));
+	for(i=0;i<num_of_vectors;i++)
+		(*cb)[i]= (uint64 *)_aligned_malloc(sizeof(uint64)*dim,16);
 }
 
-void readResiduals(block ****bt,int fromFrame,int num_of_frames,int dims,int type){
+int getCategory(short *block,int dim){
+	int i;
+	unsigned int energy=0;
+
+	for(i=0;i<dim;i++){
+		energy += block[i]*block[i];
+	}
+
+	if(C1(energy)) return 0;
+	else if(C2(energy)) return 1;
+	else if(C3(energy)) return 2;
+	else if(C4(energy)) return 3;
+	else return -1;
+}
+
+void readResiduals(short ****resi,int num_of_frames,int dims){
 	FILE *fp;
 	int64 frame,j,i,m,n,count;
 	int dim = dims*dims;
 	short **buff;
-	double mode;
+	double mode = 1.0;
 
-	fopen_s(&fp,"..//residuals//res_720x480_16bit.yuv","rb");
-	if(fp==NULL){
-		printf("Cannot open residuals file\n");
-		exit(1);
-	}
-
-
-	if(type==0)
-		mode=1.0;
-	else
-		mode=0.5;
+	fopen_s(&fp,"res_720x480_16bit.yuv","rb");
 
 	buff = (short **)malloc(sizeof(short *)*YSIZE*mode);
 	for(i=0;i<YSIZE*mode;i++){
 		buff[i] = (short *)malloc(sizeof(short)*XSIZE*mode);
 	}
 
-	bt = &bt[-fromFrame];
-	
-	label1:
-	for(frame=fromFrame;frame<num_of_frames;frame++){
-		if(type==0){
-			fseek(fp,frame*XSIZE*YSIZE*3/2,SEEK_SET); //read Y
-		}else if(type==1){
-			fseek(fp,frame*XSIZE*YSIZE*3/2+XSIZE*YSIZE,SEEK_SET); //read U
-		}else if(type==2){
-			fseek(fp,frame*XSIZE*YSIZE*3/2+XSIZE*YSIZE+(XSIZE*YSIZE)/4,SEEK_SET); //read V
-		}
+	for(frame=0;frame<num_of_frames;frame++){
+		fseek(fp,frame*XSIZE*YSIZE*3/2,SEEK_SET); //read Y
 
 		for(i=0;i<YSIZE*mode;i++){
 				fread(buff[i],sizeof(short),XSIZE*mode,fp);	
@@ -108,7 +92,7 @@ void readResiduals(block ****bt,int fromFrame,int num_of_frames,int dims,int typ
 			m=0;
 			count = 0;
 			for(i=0;i<YSIZE*mode;i++){
-				memcpy(&bt[frame][m][n]->resi[count],&buff[i][j],sizeof(short)*dims);
+				memcpy(&resi[frame][m][n][count],&buff[i][j],sizeof(short)*dims);
 				count+=dims;
 				if(count%dim==0){
 					count=0;
@@ -117,11 +101,6 @@ void readResiduals(block ****bt,int fromFrame,int num_of_frames,int dims,int typ
 			}
 			n++;
 		}
-	}
-	if(type==1){
-		//if you read u go and read v;
-		type=2;
-		goto label1;
 	}
 
 	fclose(fp);
@@ -179,13 +158,7 @@ void readCodebook(short **cb,int num_of_vectors,int dim){
 	FILE *fp;
 	float *temp = (float *)malloc(sizeof(float)*dim*num_of_vectors);
 	
-	fopen_s(&fp,"..//codebook_y16_uv4_32768//codebook0.bin","rb");
-	if(fp==NULL){
-		printf("Cannot open codebook file\n");
-		exit(1);
-	}
-
-
+	fopen_s(&fp,"codebook.bin","rb");
 	fread(temp,sizeof(float),dim*num_of_vectors,fp);
 	fclose(fp);
 
@@ -196,22 +169,7 @@ void readCodebook(short **cb,int num_of_vectors,int dim){
 	free(temp);
 }
 
-int getCategory(short *block,int dim){
-	int i;
-	unsigned int energy=0;
-
-	for(i=0;i<dim;i++){
-		energy += block[i]*block[i];
-	}
-
-	if(C1(energy)) return 0;
-	else if(C2(energy)) return 1;
-	else if(C3(energy)) return 2;
-	else if(C4(energy)) return 3;
-	else return -1;
-}
-
-int distance(short *vector1, short *vector2, int dim,int min_dist)
+int distance2_float_short_c(short *vector1, short *vector2, int dim,int min_dist)
 {
 	int i;
 	int sum;
@@ -229,7 +187,7 @@ int distance(short *vector1, short *vector2, int dim,int min_dist)
 	return sum;
 }
 
-int quantizeBlock(short **codebook,int num_of_vectors,block *bt,int dim){
+int quantizeBlock(short **codebook,int num_of_vectors,short *block,int dim){
 	int i;
 	int min_dist,dist;
 	int min_ind;
@@ -237,7 +195,7 @@ int quantizeBlock(short **codebook,int num_of_vectors,block *bt,int dim){
 	min_ind = 0;
 	min_dist = INT_MAX;
 	for(i=0;i<num_of_vectors;i++){
-		dist = distance(codebook[i],bt->resi,dim,min_dist);
+		dist = distance2_float_short_c(codebook[i],block,dim,min_dist);
 
 		if(dist<min_dist){
 			min_dist = dist;
@@ -245,108 +203,112 @@ int quantizeBlock(short **codebook,int num_of_vectors,block *bt,int dim){
 		}
 	}
 
-	memcpy(bt->resi,codebook[min_ind],sizeof(short)*dim);
-	bt->index = min_ind;
-	bt->category = getCategory(bt->resi,dim);
+	memcpy(block,codebook[min_ind],sizeof(short)*dim);
+	
+	return min_ind;
 
-	return min_dist;
 }
 
-void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int dim){
-	char cat[NOC];
-	int ind[NOC];
-	int context,i;
-	
-	cat[0] = bt[currIdy-1][currIdx-1]->category;
-	cat[1] = bt[currIdy-1][currIdx]->category;
-	cat[2] = bt[currIdy-1][currIdx+1]->category;
-	cat[3] = bt[currIdy][currIdx-1]->category;
+int getContext(short ***resi,int currIdy,int currIdx,int dim){
+	int cat[4];
 
-	ind[0] = bt[currIdy-1][currIdx-1]->index;
-	ind[1] = bt[currIdy-1][currIdx]->index;
-	ind[2] = bt[currIdy-1][currIdx+1]->index;
-	ind[3] = bt[currIdy][currIdx-1]->index;
+	
+	cat[0] = getCategory(resi[currIdy-1][currIdx-1],dim);
+	cat[1] = getCategory(resi[currIdy-1][currIdx],dim);
+	cat[2] = getCategory(resi[currIdy-1][currIdx+1],dim);
+	cat[3] = getCategory(resi[currIdy][currIdx-1],dim);
+
+	return (cat[0]*64+cat[1]*16+cat[2]*4+cat[3]);
+}
+
+int setContext(short ***resi,int currIdy,int currIdx,int dim,uint64 **cnt,short **codebook,int num_of_vectors){
+	uint64 cat[4],ind[4];
+	int i;
+	uint64 context;
+
+	
+	ind[0] = quantizeBlock(codebook,num_of_vectors,resi[currIdy-1][currIdx-1],dim);
+	cat[0] = getCategory(resi[currIdy-1][currIdx-1],dim);
+
+	ind[1] = quantizeBlock(codebook,num_of_vectors,resi[currIdy-1][currIdx],dim);
+	cat[1] = getCategory(resi[currIdy-1][currIdx],dim);
+	
+	ind[2] = quantizeBlock(codebook,num_of_vectors,resi[currIdy-1][currIdx+1],dim);
+	cat[2] = getCategory(resi[currIdy-1][currIdx+1],dim);
+
+	ind[3] = quantizeBlock(codebook,num_of_vectors,resi[currIdy][currIdx-1],dim);
+	cat[3] = getCategory(resi[currIdy][currIdx-1],dim);
 
 	context = cat[0]*64+cat[1]*16+cat[2]*4+cat[3];
 
-	for(i=0;i<NOC;i++){
-		if(ind[i]>=0){
-			cnt[context][ind[i]]++;
-		}
-	}
+	for(i=0;i<4;i++)
+		cnt[context][ind[i]]++;
 
+	return context;
 }
 
 int main(int argc, char *argv[]){
 	int num_of_frames;
-	const int num_of_clusters = 32768;
+	const int num_of_vectors = 32768;
 	const int num_of_contexts = 256;
 	int dim = 16;
 	int dims = (int) sqrt(dim+0.0);
-	int i,j,dom,dom_step;
+	int i,j;
 	double err = 0;
 	clock_t start,finish;
 	int frame;
-	block ****bt;
+	short ****resi;
 	short **cb;
 	FILE *fp;
+	//uint64 context[num_of_contexts];
 	uint64 **cnt;
 	double dur;
 
-	if(argc!=3){
-		printf("Insert [num_of_frames] [num_of_threads]\n");
-		exit(1);
-	}
-
 	num_of_frames = atoi(argv[1]);
-	dom_step = atoi(argv[2]);
-	if(num_of_frames % dom_step !=0){
-		printf("num_of_frames % step ==0)\n");
-		exit(1);
-	}
-	if(dom_step>num_of_frames) dom_step = num_of_frames;
 
-	init_codebook(&cb,num_of_clusters,dim);
-	readCodebook(cb,num_of_clusters,dim);
-
-	init_counters(&cnt,num_of_contexts,num_of_clusters);
-
-	omp_set_num_threads(atoi(argv[2]));
-
-	init_blocks(&bt,dom_step,dims);
-	for(dom=0;dom<num_of_frames;dom+=dom_step){
-		start = clock();
-		readResiduals(bt,dom,dom+dom_step,dims,0);
-		#pragma omp parallel for private(err,i,j) 
-		for(frame=0;frame<dom_step;frame++){
-			err = 0;
-			for(i=0;i<YSIZE/dims;i++){
-				for(j=0;j<XSIZE/dims;j++){
-					err += quantizeBlock(cb,num_of_clusters,bt[frame][i][j],dim);
-				}
-			}
-			printf("Frame = %d, Distortion = %.2lf\n",dom+frame,err/(XSIZE*YSIZE));
-		}
+	malloc4D(&resi,num_of_frames,dims);
+	readResiduals(resi,num_of_frames,dims);
 	
-		for(frame=0;frame<dom_step;frame++){
-			for(i=1;i<YSIZE/dims-1;i++){
-				for(j=1;j<XSIZE/dims-1;j++){
-					getContext(bt[frame],cnt,i,j,dim);
-				}
+	malloc2D(&cb,num_of_vectors,dim);
+	readCodebook(cb,num_of_vectors,dim);
+
+	malloc2D_64(&cnt,num_of_contexts,num_of_vectors);
+
+	//omp_set_num_threads(atoi(argv[2]));
+
+	//#pragma omp parallel for private(err,i,j,dur,start,finish)
+	/*for(frame=0;frame<num_of_frames;frame++){
+		start = clock();
+		err = 0;
+		for(i=0;i<YSIZE/dims;i++){
+			for(j=0;j<XSIZE/dims;j++){
+				err += quantizeBlock(cb,num_of_vectors,resi[frame][i][j],dim);
 			}
 		}
-
 		finish = clock();
 		dur = (double)(finish - start) / CLOCKS_PER_SEC;
-		printf("Seconds/Frame = %.2lf\n",dur/dom_step);
-	}
+		printf("Frame %d, Total error %lf,Duration %.2lf\n",frame,err/(XSIZE*YSIZE),dur);
+	}*/
 
-	fopen_s(&fp,"context.bin","wb");
-	if(fp!=NULL){
-		int i;
-		for(i=0;i<num_of_contexts;i++)
-			fwrite(cnt[i],sizeof(uint64),num_of_clusters,fp);
-		fclose(fp);
+	for(i=0;i<num_of_contexts;i++)
+		memset(cnt[i],0,sizeof(uint64)*num_of_vectors);
+
+	for(frame=0;frame<num_of_frames;frame++){
+		start = clock();
+		for(i=1;i<YSIZE/dims-1;i++){
+			for(j=1;j<XSIZE/dims-1;j++){
+				setContext(resi[frame],i,j,dim,cnt,cb,num_of_vectors);
+			}
+		}
+		finish = clock();
+		dur = (double)(finish - start) / CLOCKS_PER_SEC;
+		printf("Frame %d,Duration %.2lf\n",frame,dur);
 	}
+	
+	/*fopen_s(&fp,"context.bin","wb");
+	if(fp!=NULL){
+		fwrite(context,sizeof(uint64),256,fp);
+		fclose(fp);
+	}*/
 	return 1;
 }

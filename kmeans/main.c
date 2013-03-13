@@ -9,8 +9,8 @@ int main(int argc,char *argv[]){
 	char *filename;
 
 
-	if(argc!=7){
-		printf("Insert [dim] [codebook size] [number of frames] [inputfile] [number of threads] [type]\n");
+	if(argc!=6){
+		printf("Insert [dim] [codebook size] [number of frames] [inputfile] [number of threads]\n");
 		exit(1);
 	}
 
@@ -19,9 +19,8 @@ int main(int argc,char *argv[]){
 	num_of_frames = atoi(argv[3]);
 	filename = argv[4];
 	omp_set_num_threads(atoi(argv[5]));
-	type = atoi(argv[6]);
 	
-	for(;type<2;type++){
+	for(type=0;type<2;type++){
 		start_kmeans(dim,num_of_clusters,num_of_frames,type,filename);
 	}
 }
