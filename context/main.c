@@ -292,7 +292,8 @@ int main(int argc, char *argv[]){
 	FILE *fp;
 	uint64 **cnt;
 	double dur;
-
+	
+	
 	if(argc!=3){
 		printf("Insert [num_of_frames] [num_of_threads]\n");
 		exit(1);
