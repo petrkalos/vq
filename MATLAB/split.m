@@ -1,8 +1,6 @@
 function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
 %SPLIT Summary of this function goes here
 %   Detailed explanation goes here
-    
-    disp('\n');
 
     %cblen = str2num(cblen);
     %dim = str2num(dim);
@@ -49,6 +47,5 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
     
     disp(energy(splits));
     
-    exit(1);
 end
 
