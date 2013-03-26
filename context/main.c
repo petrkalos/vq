@@ -21,6 +21,7 @@ typedef unsigned __int64 int64;
 const int XSIZE = 720;
 const int YSIZE = 480;
 
+static uint64 total_vectors = 0;
 
 typedef struct{
 	short *resi;
@@ -74,13 +75,13 @@ void init_counters(uint64 ***cnt,int num_of_contexts,int num_of_clusters){
 		(*cnt)[i]= (uint64 *)calloc(num_of_clusters,sizeof(uint64));
 }
 
-void readResiduals(char *filename,block ****bt,int fromFrame,int num_of_frames,int dims,int type){
+void readResiduals(char *filename,block ****bt,int fromFrame,int toFrame,int dims,int type){
 	FILE *fp;
 	int64 frame,j,i,m,n,count;
 	int dim = dims*dims;
 	short **buff;
 	double mode;
-
+	int step = (toFrame-fromFrame);
 	fopen_s(&fp,filename,"rb");
 	if(fp==NULL){
 		printf("Cannot open residuals file\n");
@@ -97,11 +98,9 @@ void readResiduals(char *filename,block ****bt,int fromFrame,int num_of_frames,i
 	for(i=0;i<YSIZE*mode;i++){
 		buff[i] = (short *)malloc(sizeof(short)*XSIZE*mode);
 	}
-
-	bt = &bt[-fromFrame];
 	
 	label1:
-	for(frame=fromFrame;frame<num_of_frames;frame++){
+	for(frame=fromFrame;frame<toFrame;frame++){
 		if(type==0){
 			fseek(fp,frame*XSIZE*YSIZE*3/2,SEEK_SET); //read Y
 		}else if(type==1){
@@ -119,7 +118,7 @@ void readResiduals(char *filename,block ****bt,int fromFrame,int num_of_frames,i
 			m=0;
 			count = 0;
 			for(i=0;i<YSIZE*mode;i++){
-				memcpy(&bt[frame][m][n]->resi[count],&buff[i][j],sizeof(short)*dims);
+				memcpy(&bt[frame%step][m][n]->resi[count],&buff[i][j],sizeof(short)*dims);
 				count+=dims;
 				if(count%dim==0){
 					count=0;
@@ -161,11 +160,6 @@ void writeResiduals(short ****resi,int num_of_frames,int dims){
 			count = 0;
 			for(i=0;i<YSIZE*mode;i++){
 				memcpy(&buff[i][j],&resi[frame][m][n][count],sizeof(short)*dims);
-				/*temp = getContext(resi[frame][m][n],dim)*16383;
-				for(t=0;t<dims;t++){
-					buff[i][j+t] = temp;
-				}*/
-
 				count+=dims;
 				if(count%dim==0){
 					count=0;
@@ -276,24 +270,32 @@ void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int dim){
 	int ind[NOC];
 	int context,i;
 	
-	cat[0] = bt[currIdy-1][currIdx-1]->category;
-	cat[1] = bt[currIdy-1][currIdx]->category;
-	cat[2] = bt[currIdy-1][currIdx+1]->category;
-	cat[3] = bt[currIdy][currIdx-1]->category;
+	if(currIdy==0 && currIdx==0){	//diagonial left
+		cnt[256][0]++;
+	}else if(currIdy==0){			//first row
+		cnt[257][0]++;
+	}else if(currIdx==0 || currIdx+1==XSIZE/(sqrt(dim))){	//first and last column
+		cnt[258][0]++;
+	}else{
+		cat[0] = bt[currIdy-1][currIdx-1]->category;
+		cat[1] = bt[currIdy-1][currIdx]->category;
+		cat[2] = bt[currIdy-1][currIdx+1]->category;
+		cat[3] = bt[currIdy][currIdx-1]->category;
 
-	ind[0] = bt[currIdy-1][currIdx-1]->index;
-	ind[1] = bt[currIdy-1][currIdx]->index;
-	ind[2] = bt[currIdy-1][currIdx+1]->index;
-	ind[3] = bt[currIdy][currIdx-1]->index;
+		ind[0] = bt[currIdy-1][currIdx-1]->index;	
+		ind[1] = bt[currIdy-1][currIdx]->index;
+		ind[2] = bt[currIdy-1][currIdx+1]->index;
+		ind[3] = bt[currIdy][currIdx-1]->index;
+	
+		context = cat[0]*64+cat[1]*16+cat[2]*4+cat[3];
 
-	context = cat[0]*64+cat[1]*16+cat[2]*4+cat[3];
-
-	for(i=0;i<NOC;i++){
-		if(ind[i]>=0){
-			cnt[context][ind[i]]++;
+		for(i=0;i<NOC;i++){
+			if(ind[i]>=0){
+				cnt[context][ind[i]]++;
+			}
 		}
 	}
-
+	total_vectors++;
 }
 
 void calcEnergy(short **codebook,int num_of_clusters,int dim){
@@ -312,7 +314,7 @@ void calcEnergy(short **codebook,int num_of_clusters,int dim){
 int main(int argc, char *argv[]){
 	int num_of_frames;
 	const int num_of_clusters = 65536;
-	const int num_of_contexts = 256;
+	const int num_of_contexts = 256+3;
 	int dim = 16;
 	int dims = (int) sqrt(dim+0.0);
 	int i,j,dom,dom_step,type;
@@ -342,7 +344,7 @@ int main(int argc, char *argv[]){
 
 	if(num_of_frames % dom_step !=0){
 		printf("num_of_frames % step ==0)\n");
-		exit(1);
+		return 1;
 	}
 	if(dom_step>num_of_frames) dom_step = num_of_frames;
 
@@ -374,8 +376,8 @@ int main(int argc, char *argv[]){
 		}
 	
 		for(frame=0;frame<dom_step;frame++){
-			for(i=1;i<(mode*YSIZE)/dims-1;i++){
-				for(j=1;j<(mode*XSIZE)/dims-1;j++){
+			for(i=0;i<(mode*YSIZE)/dims;i++){
+				for(j=0;j<(mode*XSIZE)/dims;j++){
 					getContext(bt[frame],cnt,i,j,dim);
 				}
 			}
@@ -393,5 +395,7 @@ int main(int argc, char *argv[]){
 			fwrite(cnt[i],sizeof(uint64),num_of_clusters,fp);
 		fclose(fp);
 	}
+
+	printf("Total vectors quantized %u\n",total_vectors);
 	return 1;
 }

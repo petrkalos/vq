@@ -1,12 +1,4 @@
 Thesis project in University of Thessaly.
 Dept of Computer and Communication Engineering.
 
-Trying to implemenent vector quantization in video encoders h264/h265(HEVC).
-
-Currently implemented tools...
-
-kmeans: in order to create codebooks. Optimized with OpenMP and SSE extensions
-
-quantizer: Quantize blocks of 4:2:0 YUV
-
-entropy encoder: [WIP]
+Vector Quantization for video codecs h264/h265(HEVC).
