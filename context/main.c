@@ -333,6 +333,7 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
+
 	type = atoi(argv[1]);
 	num_of_frames = atoi(argv[2]);
 	dom_step = atoi(argv[3]);
