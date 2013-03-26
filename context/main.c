@@ -286,7 +286,6 @@ void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int dim){
 		ind[1] = bt[currIdy-1][currIdx]->index;
 		ind[2] = bt[currIdy-1][currIdx+1]->index;
 		ind[3] = bt[currIdy][currIdx-1]->index;
-	
 		context = cat[0]*64+cat[1]*16+cat[2]*4+cat[3];
 		for(i=0;i<NOC;i++){
 			if(ind[i]>=0){
