@@ -11,12 +11,10 @@
 typedef unsigned __int64 uint64;
 typedef unsigned __int64 int64;
 
-#define C1(x) x>=0 && x<=22
-#define C2(x) x>22 && x<=350
-#define C3(x) x>350 && x<=5148
-#define C4(x) x>5148
-
 #define NOC 4
+
+const int cat[3][NOC+1] = {{0,21,322,5150,717484},{0,30,579,6498,572890},{0,30,579,6498,572890}};
+
 
 const int XSIZE = 720;
 const int YSIZE = 480;
@@ -48,7 +46,7 @@ void init_blocks(block *****resi,int num_of_frames,int dims,int type){
 		for(m=0;m<(mode*YSIZE)/dims;m++){
 			(*resi)[frame][m] = (block **) malloc(sizeof(block *)*(mode*XSIZE)/dims);
 			for(n=0;n<(mode*XSIZE)/dims;n++){
-				(*resi)[frame][m][n] = (block *) _aligned_malloc(sizeof(block),16);
+				(*resi)[frame][m][n] = (block *) malloc(sizeof(block));
 				(*resi)[frame][m][n]->resi = (short *) malloc(sizeof(short)*dim);
 				(*resi)[frame][m][n]->category = -1;
 				(*resi)[frame][m][n]->index = -1;
@@ -57,14 +55,47 @@ void init_blocks(block *****resi,int num_of_frames,int dims,int type){
 	}
 }
 
+void free_blocks(block ****resi,int num_of_frames,int dims,int type){
+	int frame,m,n;
+	double mode;
+
+	if(type==0)
+		mode = 1;
+	else
+		mode = 0.5;
+
+	for(frame=0;frame<num_of_frames;frame++){
+		for(m=0;m<(mode*YSIZE)/dims;m++){
+			for(n=0;n<(mode*XSIZE)/dims;n++){
+				free(resi[frame][m][n]->resi);
+				free(resi[frame][m][n]);
+			}
+			free(resi[frame][m]);
+		}
+		free(resi[frame]);
+	}
+	free(resi);
+}
+
 void init_codebook(short ***cb,int num_of_clusters,int dim){
 	int i;
 	*cb = (short **) malloc(sizeof(short *)*num_of_clusters);
 	
 	for(i=0;i<num_of_clusters;i++)
-		(*cb)[i]= (short *)_aligned_malloc(sizeof(short)*dim,16);
+		(*cb)[i]= (short *)malloc(sizeof(short)*dim);
 
 	energy = (uint64 *) malloc(sizeof(uint64)*num_of_clusters);
+}
+
+void free_codebook(short **cb,int num_of_clusters){
+	int i;
+	
+	for(i=0;i<num_of_clusters;i++)
+		free(cb[i]);
+
+	free(cb);
+
+	free(energy);
 }
 
 void init_counters(uint64 ***cnt,int num_of_contexts,int num_of_clusters){
@@ -75,6 +106,15 @@ void init_counters(uint64 ***cnt,int num_of_contexts,int num_of_clusters){
 		(*cnt)[i]= (uint64 *)calloc(num_of_clusters,sizeof(uint64));
 }
 
+void free_counters(uint64 **cnt,int num_of_contexts){
+	int i;
+	
+	for(i=0;i<num_of_contexts;i++)
+		free(cnt[i]);
+
+	free(cnt);
+}
+
 void readResiduals(char *filename,block ****bt,int fromFrame,int toFrame,int dims,int type){
 	FILE *fp;
 	int64 frame,j,i,m,n,count;
@@ -82,12 +122,12 @@ void readResiduals(char *filename,block ****bt,int fromFrame,int toFrame,int dim
 	short **buff;
 	double mode;
 	int step = (toFrame-fromFrame);
+
 	fopen_s(&fp,filename,"rb");
 	if(fp==NULL){
 		printf("Cannot open residuals file\n");
 		exit(1);
 	}
-
 
 	if(type==0)
 		mode=1.0;
@@ -99,7 +139,6 @@ void readResiduals(char *filename,block ****bt,int fromFrame,int toFrame,int dim
 		buff[i] = (short *)malloc(sizeof(short)*XSIZE*mode);
 	}
 	
-	label1:
 	for(frame=fromFrame;frame<toFrame;frame++){
 		if(type==0){
 			fseek(fp,frame*XSIZE*YSIZE*3/2,SEEK_SET); //read Y
@@ -128,17 +167,12 @@ void readResiduals(char *filename,block ****bt,int fromFrame,int toFrame,int dim
 			n++;
 		}
 	}
-	//if(type==1){
-		//if you read u go and read v;
-		//type=2;
-		//goto label1;
-	//}
 
 	fclose(fp);
 }
 
 void writeResiduals(short ****resi,int num_of_frames,int dims){
-//#define short unsigned char
+	//#define short unsigned char
 	FILE *fp;
 	int frame,j,i,m,n,count;
 	int dim = dims*dims;
@@ -176,20 +210,22 @@ void writeResiduals(short ****resi,int num_of_frames,int dims){
 			fwrite(buff[i],sizeof(short),XSIZE/2,fp);
 	}
 	fclose(fp);
-	#undef short
+	//#undef short
 }
 
-void readCodebook(char *filename,short **cb,int num_of_clusters,int dim){
+void readCodebook(char *filename,short **cb,int num_of_clusters,int dim,int type){
 	int i,j;
 	FILE *fp;
 	float *temp = (float *)malloc(sizeof(float)*dim*num_of_clusters);
 	
+	filename[strlen(filename)-5] = 48+type; //fix file name if it is wrong
+
+	printf("codebook filename %s\n",filename);
 	fopen_s(&fp,filename,"rb");
 	if(fp==NULL){
 		printf("Cannot open codebook file\n");
 		exit(1);
 	}
-
 
 	fread(temp,sizeof(float),dim*num_of_clusters,fp);
 	fclose(fp);
@@ -201,27 +237,15 @@ void readCodebook(char *filename,short **cb,int num_of_clusters,int dim){
 	free(temp);
 }
 
-int getCategory(short *block,int dim){
-	int i;
-	unsigned int energy=0;
+int getCategory(int i,int type){
+	int j;
 
-	for(i=0;i<dim;i++){
-		energy += block[i]*block[i];
+	for(j=0;j<NOC;j++){
+		if(energy[i]>=cat[type][j] && energy[i]<cat[type][j+1])
+			return j;
 	}
 
-	if(C1(energy)) return 0;
-	else if(C2(energy)) return 1;
-	else if(C3(energy)) return 2;
-	else if(C4(energy)) return 3;
-	else return -1;
-}
-
-int getCategory2(int i){
-	if(C1(energy[i])) return 0;
-	else if(C2(energy[i])) return 1;
-	else if(C3(energy[i])) return 2;
-	else if(C4(energy[i])) return 3;
-	else return -1;
+	return 4;
 }
 
 int distance(short *vector1, short *vector2, int dim,int min_dist)
@@ -242,7 +266,7 @@ int distance(short *vector1, short *vector2, int dim,int min_dist)
 	return sum;
 }
 
-int quantizeBlock(short **codebook,int num_of_clusters,block *bt,int dim){
+int quantizeBlock(short **codebook,int num_of_clusters,block *bt,int dim,int type){
 	int i;
 	int min_dist,dist;
 	int min_ind;
@@ -260,40 +284,36 @@ int quantizeBlock(short **codebook,int num_of_clusters,block *bt,int dim){
 
 	memcpy(bt->resi,codebook[min_ind],sizeof(short)*dim);
 	bt->index = min_ind;
-	bt->category = getCategory2(min_ind);
+	bt->category = getCategory(min_ind,type);
 
 	return min_dist;
 }
 
-void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int dim){
+void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int x_size){
 	char cat[NOC];
-	int ind[NOC];
-	int context,i;
-	
+	int ind;
+	int context;
+	ind = bt[currIdy][currIdx]->index;
+	if(ind<0){
+		printf("index error\n");
+		return;
+	}
+
 	if(currIdy==0 && currIdx==0){	//diagonial left
-		cnt[256][0]++;
+		cnt[256][ind]++;
 	}else if(currIdy==0){			//first row
-		cnt[257][0]++;
-	}else if(currIdx==0 || currIdx+1==XSIZE/(sqrt(dim))){	//first and last column
-		cnt[258][0]++;
+		cnt[257][ind]++;
+	}else if(currIdx==0 || currIdx+1==x_size){	//first and last column
+		cnt[258][ind]++;
 	}else{
 		cat[0] = bt[currIdy-1][currIdx-1]->category;
 		cat[1] = bt[currIdy-1][currIdx]->category;
 		cat[2] = bt[currIdy-1][currIdx+1]->category;
 		cat[3] = bt[currIdy][currIdx-1]->category;
 
-		ind[0] = bt[currIdy-1][currIdx-1]->index;	
-		ind[1] = bt[currIdy-1][currIdx]->index;
-		ind[2] = bt[currIdy-1][currIdx+1]->index;
-		ind[3] = bt[currIdy][currIdx-1]->index;
-
 		context = cat[0]*64+cat[1]*16+cat[2]*4+cat[3];
-		
-		for(i=0;i<NOC;i++){
-			if(ind[i]>=0){
-				cnt[context][ind[i]]++;
-			}
-		}
+
+		cnt[context][ind]++;		
 	}
 	total_vectors++;
 }
@@ -313,6 +333,7 @@ void calcEnergy(short **codebook,int num_of_clusters,int dim){
 
 int main(int argc, char *argv[]){
 	int num_of_frames;
+	char filename[100];
 	const int num_of_clusters = 65536;
 	const int num_of_contexts = 256+3;
 	int dim = 16;
@@ -338,19 +359,17 @@ int main(int argc, char *argv[]){
 	num_of_frames = atoi(argv[2]);
 	dom_step = atoi(argv[3]);
 
-	if(type==0)
-		mode = 1;
-	else
-		mode = 0.5;
-
 	if(num_of_frames % dom_step !=0){
 		printf("num_of_frames % step ==0)\n");
 		return 1;
 	}
 	if(dom_step>num_of_frames) dom_step = num_of_frames;
 
+
 	init_codebook(&cb,num_of_clusters,dim);
-	readCodebook(argv[4],cb,num_of_clusters,dim);
+	
+	label2:
+	readCodebook(argv[4],cb,num_of_clusters,dim,type);
 
 	init_counters(&cnt,num_of_contexts,num_of_clusters);
 
@@ -360,8 +379,13 @@ int main(int argc, char *argv[]){
 
 	calcEnergy(cb,num_of_clusters,dim);
 
-	printf("Type: %d, num_of_frames: %d, num_of_clusters: %d\n",type,num_of_frames,num_of_clusters);
+	label1:
+	if(type==0)
+		mode = 1;
+	else
+		mode = 0.5;
 
+	printf("Type: %d, num_of_frames: %d, num_of_clusters: %d\n",type,num_of_frames,num_of_clusters);
 	for(dom=0;dom<num_of_frames;dom+=dom_step){
 		start = clock();
 		readResiduals(argv[5],bt,dom,dom+dom_step,dims,type);
@@ -370,7 +394,7 @@ int main(int argc, char *argv[]){
 			err = 0;
 			for(i=0;i<(mode*YSIZE)/dims;i++){
 				for(j=0;j<(mode*XSIZE)/dims;j++){
-					err += quantizeBlock(cb,num_of_clusters,bt[frame][i][j],dim);
+					err += quantizeBlock(cb,num_of_clusters,bt[frame][i][j],dim,type);
 				}
 			}
 			printf("Frame = %d, Distortion = %.2lf\n",dom+frame,err/(XSIZE*YSIZE));
@@ -379,7 +403,7 @@ int main(int argc, char *argv[]){
 		for(frame=0;frame<dom_step;frame++){
 			for(i=0;i<(mode*YSIZE)/dims;i++){
 				for(j=0;j<(mode*XSIZE)/dims;j++){
-					getContext(bt[frame],cnt,i,j,dim);
+					getContext(bt[frame],cnt,i,j,(mode*XSIZE)/dims);
 				}
 			}
 		}
@@ -388,15 +412,34 @@ int main(int argc, char *argv[]){
 		dur = (double)(finish - start) / CLOCKS_PER_SEC;
 		printf("Seconds/Frame = %.2lf\n",dur/dom_step);
 	}
+	
+	if(type==1){
+		type=2;
+		goto label1;
+	}
 
-	fopen_s(&fp,"context.bin","wb");
+	if(type==2) type=1;
+	sprintf(filename,"context%d.bin",type);
+	fopen_s(&fp,filename,"wb");
 	if(fp!=NULL){
 		int i;
 		for(i=0;i<num_of_contexts;i++)
 			fwrite(cnt[i],sizeof(uint64),num_of_clusters,fp);
 		fclose(fp);
+	}else{
+		printf("Error opening write file\n");
 	}
 
+	if(type==0){
+		free_counters(cnt,num_of_contexts);
+		//free_blocks(bt,num_of_frames,dims,type);
+		type = 1;
+		goto label2;
+	}
+	
+	free_counters(cnt,num_of_contexts);
+	//free_blocks(bt,num_of_frames,dims,type);
+	free_codebook(cb,num_of_clusters);
 	printf("Total vectors quantized %u\n",total_vectors);
 	return 1;
 }

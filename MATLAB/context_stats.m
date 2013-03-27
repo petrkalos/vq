@@ -1,22 +1,26 @@
-function [entr,p,test] = context_stats( filename,num_of_categories,num_of_clusters )
+function [entr,p,counters] = context_stats( filename,num_of_categories,num_of_clusters )
 %CONTEXT_STATS Summary of this function goes here
 %   Detailed explanation goes here
     
     fp = fopen(filename,'rb');
-    cnts = fread(fp,num_of_clusters*num_of_categories,'uint64');
+    counters = fread(fp,num_of_clusters*num_of_categories,'uint64');
     fclose(fp);
     
-    cnts = reshape(cnts,num_of_clusters,num_of_categories)';
+    counters = reshape(counters,num_of_clusters,num_of_categories)';
     
-    sums = sum(cnts);
+    row_sums = sum(counters,2); 
     
-    total_sum = sum(sums);
+    sums2 = repmat(row_sums, 1, size(counters,2));
+    row_probs = counters./sums2;
     
-    p = sums/total_sum;
+    for i=1:num_of_categories
+        entr(i) = my_entropy(row_probs(i,:)');
+    end    
     
-    test = sums;
+    cat_sums = sum(counters');
+    total_sums = sum(cat_sums);    
     
-    entr = wentropy(p,'shannon')/log(2);
+    p = cat_sums/total_sums;
     
 end
 
