@@ -7,13 +7,14 @@
 #include <time.h>
 #include <omp.h>
 #include <windows.h>
+#include <WinError.h>
 
 typedef unsigned __int64 uint64;
-typedef unsigned __int64 int64;
+typedef __int64 int64;
 
 #define NOC 4
 
-const int cat[3][NOC+1] = {{0,21,322,5150,717484},{0,30,579,6498,572890},{0,30,579,6498,572890}};
+const int64 cat[3][NOC+1] = {{-1,21,322,5150,717484},{-1,30,579,6498,572890},{-1,30,579,6498,572890}};
 
 
 const int XSIZE = 720;
@@ -27,9 +28,16 @@ typedef struct{
 	int index;
 }block;
 
-uint64 *energy;
+int64 *energy;
 
-void init_blocks(block *****resi,int num_of_frames,int dims,int type){
+void check_memory(const char *msg,void *ptr){
+	if(ptr==NULL){
+		printf("%s\n",msg);
+		exit(ERROR_NOT_ENOUGH_MEMORY);
+	}
+}
+
+void init_blocks(block *****bt,int num_of_frames,int dims,int type){
 	int frame,m,n;
 	int dim = dims*dims;
 	double mode;
@@ -39,17 +47,22 @@ void init_blocks(block *****resi,int num_of_frames,int dims,int type){
 	else
 		mode = 0.5;
 
-	*resi = (block ****) malloc(sizeof(short ***)*num_of_frames);
-	
+	*bt = (block ****) malloc(sizeof(short ***)*num_of_frames);
+	check_memory("Block frames memory",(*bt));
+
 	for(frame=0;frame<num_of_frames;frame++){
-		(*resi)[frame] = (block ***) malloc(sizeof(block **)*(mode*YSIZE)/dims);
+		(*bt)[frame] = (block ***) malloc(sizeof(block **)*(mode*YSIZE)/dims);
+		check_memory("Block y-dim memory",(*bt)[frame]);
 		for(m=0;m<(mode*YSIZE)/dims;m++){
-			(*resi)[frame][m] = (block **) malloc(sizeof(block *)*(mode*XSIZE)/dims);
+			(*bt)[frame][m] = (block **) malloc(sizeof(block *)*(mode*XSIZE)/dims);
+			check_memory("Block x-dim memory",(*bt)[frame][m]);
 			for(n=0;n<(mode*XSIZE)/dims;n++){
-				(*resi)[frame][m][n] = (block *) malloc(sizeof(block));
-				(*resi)[frame][m][n]->resi = (short *) malloc(sizeof(short)*dim);
-				(*resi)[frame][m][n]->category = -1;
-				(*resi)[frame][m][n]->index = -1;
+				(*bt)[frame][m][n] = (block *) malloc(sizeof(block));
+				check_memory("Block struct memory",(*bt)[frame][m][n]);
+				(*bt)[frame][m][n]->resi = (short *) malloc(sizeof(short)*dim);
+				check_memory("Block residual memory",(*bt)[frame][m]);
+				(*bt)[frame][m][n]->category = -1;
+				(*bt)[frame][m][n]->index = -1;
 			}
 		}
 	}
@@ -81,10 +94,15 @@ void init_codebook(short ***cb,int num_of_clusters,int dim){
 	int i;
 	*cb = (short **) malloc(sizeof(short *)*num_of_clusters);
 	
-	for(i=0;i<num_of_clusters;i++)
-		(*cb)[i]= (short *)malloc(sizeof(short)*dim);
+	check_memory("Codebook memory",*cb);
 
-	energy = (uint64 *) malloc(sizeof(uint64)*num_of_clusters);
+	for(i=0;i<num_of_clusters;i++){
+		(*cb)[i]= (short *)malloc(sizeof(short)*dim);
+		check_memory("Codebook row memory",(*cb)[i]);
+	}
+	
+	energy = malloc(sizeof(energy)*num_of_clusters);
+	check_memory("Energy memory",energy);
 }
 
 void free_codebook(short **cb,int num_of_clusters){
@@ -101,9 +119,11 @@ void free_codebook(short **cb,int num_of_clusters){
 void init_counters(uint64 ***cnt,int num_of_contexts,int num_of_clusters){
 	int i;
 	*cnt = (uint64 **) malloc(sizeof(uint64 *)*num_of_contexts);
-	
-	for(i=0;i<num_of_contexts;i++)
+	check_memory("Counters memory",(*cnt));
+	for(i=0;i<num_of_contexts;i++){
 		(*cnt)[i]= (uint64 *)calloc(num_of_clusters,sizeof(uint64));
+		check_memory("Counters row memory",(*cnt)[i]);
+	}
 }
 
 void free_counters(uint64 **cnt,int num_of_contexts){
@@ -126,7 +146,7 @@ void readResiduals(char *filename,block ****bt,int fromFrame,int toFrame,int dim
 	fopen_s(&fp,filename,"rb");
 	if(fp==NULL){
 		printf("Cannot open residuals file\n");
-		exit(1);
+		exit(ERROR_FILE_NOT_FOUND);
 	}
 
 	if(type==0)
@@ -224,7 +244,7 @@ void readCodebook(char *filename,short **cb,int num_of_clusters,int dim,int type
 	fopen_s(&fp,filename,"rb");
 	if(fp==NULL){
 		printf("Cannot open codebook file\n");
-		exit(1);
+		exit(ERROR_FILE_NOT_FOUND);
 	}
 
 	fread(temp,sizeof(float),dim*num_of_clusters,fp);
@@ -241,11 +261,11 @@ int getCategory(int i,int type){
 	int j;
 
 	for(j=0;j<NOC;j++){
-		if(energy[i]>=cat[type][j] && energy[i]<cat[type][j+1])
+		if((energy[i])>cat[type][j] && energy[i]<=cat[type][j+1])
 			return j;
 	}
 
-	return 4;
+	return 3;
 }
 
 int distance(short *vector1, short *vector2, int dim,int min_dist)
@@ -348,7 +368,6 @@ int main(int argc, char *argv[]){
 	uint64 **cnt;
 	double dur,mode;
 	
-	
 	if(argc!=6){
 		printf("Insert [type] [num_of_frames] [num_of_threads] [codebook] [residuals]\n");
 		exit(1);
@@ -358,11 +377,12 @@ int main(int argc, char *argv[]){
 	type = atoi(argv[1]);
 	num_of_frames = atoi(argv[2]);
 	dom_step = atoi(argv[3]);
-
+	
 	if(num_of_frames % dom_step !=0){
-		printf("num_of_frames % step ==0)\n");
-		return 1;
+		printf("num_of_frames %% step == 0\n");
+		exit(1);
 	}
+	
 	if(dom_step>num_of_frames) dom_step = num_of_frames;
 
 
@@ -428,18 +448,19 @@ int main(int argc, char *argv[]){
 		fclose(fp);
 	}else{
 		printf("Error opening write file\n");
+		exit(ERROR_FILE_NOT_FOUND);
 	}
 
 	if(type==0){
-		free_counters(cnt,num_of_contexts);
+		//free_counters(cnt,num_of_contexts);
 		//free_blocks(bt,num_of_frames,dims,type);
 		type = 1;
 		goto label2;
 	}
 	
-	free_counters(cnt,num_of_contexts);
+	//free_counters(cnt,num_of_contexts);
 	//free_blocks(bt,num_of_frames,dims,type);
-	free_codebook(cb,num_of_clusters);
+	//free_codebook(cb,num_of_clusters);
 	printf("Total vectors quantized %u\n",total_vectors);
-	return 1;
+	return 0;
 }

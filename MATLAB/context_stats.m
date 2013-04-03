@@ -1,4 +1,4 @@
-function [entr,p,counters] = context_stats( filename,num_of_categories,num_of_clusters )
+function [h,entr,p,counters] = context_stats( filename,num_of_categories,num_of_clusters )
 %CONTEXT_STATS Summary of this function goes here
 %   Detailed explanation goes here
     
@@ -14,13 +14,17 @@ function [entr,p,counters] = context_stats( filename,num_of_categories,num_of_cl
     row_probs = counters./sums2;
     
     for i=1:num_of_categories
-        entr(i) = my_entropy(row_probs(i,:)');
+       entr(i) = my_entropy(row_probs(i,:));
     end    
+    
+    %entr = my_entropy(row_probs);
     
     cat_sums = sum(counters');
     total_sums = sum(cat_sums);    
     
     p = cat_sums/total_sums;
+    
+    h = sum(entr.*p)/16;
     
 end
 
