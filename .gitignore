@@ -7,7 +7,12 @@ My */
 #yuv and bin files
 *.yuv
 *.bin
+*.y
+*.uv
+
 codebook_*/
+
+*.txt
 
 #matlab files
 *.asv

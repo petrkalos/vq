@@ -14,7 +14,7 @@ typedef __int64 int64;
 
 #define NOC 4
 
-const int64 cat[3][NOC+1] = {{-1,21,322,5150,717484},{-1,30,579,6498,572890},{-1,30,579,6498,572890}};
+const int64 cat[3][NOC+1] = {{-1,22,324,5184,717484},{-1,30,579,6498,572890},{-1,30,579,6498,572890}};
 
 
 const int XSIZE = 720;
@@ -295,14 +295,13 @@ int quantizeBlock(short **codebook,int num_of_clusters,block *bt,int dim,int typ
 	min_dist = INT_MAX;
 	for(i=0;i<num_of_clusters;i++){
 		dist = distance(codebook[i],bt->resi,dim,min_dist);
-
 		if(dist<min_dist){
 			min_dist = dist;
 			min_ind = i;
 		}
 	}
 
-	memcpy(bt->resi,codebook[min_ind],sizeof(short)*dim);
+	//memcpy(bt->resi,codebook[min_ind],sizeof(short)*dim);
 	bt->index = min_ind;
 	bt->category = getCategory(min_ind,type);
 
@@ -350,7 +349,7 @@ void calcEnergy(short **codebook,int num_of_clusters,int dim){
 		energy[i] = en;
 	}
 }
-
+ 
 int main(int argc, char *argv[]){
 	int num_of_frames;
 	char filename[100];
@@ -439,6 +438,7 @@ int main(int argc, char *argv[]){
 	}
 
 	if(type==2) type=1;
+
 	sprintf(filename,"context%d.bin",type);
 	fopen_s(&fp,filename,"wb");
 	if(fp!=NULL){

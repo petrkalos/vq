@@ -31,7 +31,6 @@ Retrieved from: http://en.literateprograms.org/Huffman_coding_(C_Plus_Plus)?oldi
 #include <algorithm>
 #include <iterator>
 #include <string>
-#include <stdio.h>
 
 std::ostream& operator<<(std::ostream& os, std::vector<bool> vec)
 {
@@ -41,10 +40,10 @@ std::ostream& operator<<(std::ostream& os, std::vector<bool> vec)
 
 int main(int argc,char *argv[])
 {
-	std::map<int, double> frequencies;
+	std::map<unsigned int, double> p;
 	long long *counters;
 	unsigned __int64 sum;
-	double len;
+	double len,entr;
 	int num_of_clusters = 65536;
 	int dim = 16;
 	int i;
@@ -73,17 +72,25 @@ int main(int argc,char *argv[])
 	}
 
 	for(i=0;i<num_of_clusters;i++){
-		frequencies[i] = (double)counters[i]/sum;
+		p[i] = (double)counters[i]/sum;
 	}
 
-	Hufftree<char, double> hufftree(frequencies.begin(), frequencies.end());
-	
 	len = 0.0;
-	for (i=0; i<num_of_clusters; i++)
-	{
-		len += frequencies[i]*hufftree.encode(i).size();
+	for(i=0;i<num_of_clusters;i++){
+		len+=p[i];
 	}
+
+	Hufftree<unsigned int, double> hufftree(p.begin(), p.end());
+	
+	len = entr = 0.0;
+	for (i=0; i<p.size(); i++)
+	{
+		len += p[i]*hufftree.encode(i).size();
+		entr += -p[i]*log(p[i]);
+	}
+	entr /= log(2.0);
 	
 	std::cout << "Huffman average length per pixel: " << len/dim << "\n\n\n";
+	std::cout << "Entropy per pixel: " << entr/dim << "\n\n\n";
 
 }

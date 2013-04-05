@@ -771,6 +771,189 @@ double entropy(int *count,int size)
 	return h;
 }
 
+int find_max(MY_DOUBLE *max_dist, int size){
+	int i;
+	int max_ind = -1;
+	double max = -1.0;
+
+	for(i=0;i<size;i++){
+		if(max_dist[i]>max){
+			max = max_dist[i];
+			max_ind = i;
+		}
+	}
+
+	return max_ind;
+
+}
+
+double kmeans_initialize_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *indices, MY_DOUBLE *distances, int *cluster_count, double *new_clusters, 
+						 int dim, int num_of_clusters, int num_of_vectors, int *diff_count)
+{
+	int i, j;
+	MY_SHORT *p1;
+	MY_DOUBLE *p2;
+	MY_DOUBLE dist;
+	MY_DOUBLE min_dist;
+	MY_DOUBLE max_dist,*max_dist_omp;
+	int max_ind,*max_ind_omp;
+	double total_sum,*total_sum_omp;
+	int dim2 = ALIGN(dim,ALIGNMENT/sizeof(MY_SHORT));
+	MY_DOUBLE *local_vector,**local_vector_omp;
+
+	{
+		int tid = omp_get_thread_num();
+		local_vector_omp =  (MY_DOUBLE **) malloc(sizeof(MY_DOUBLE *)*omp_get_max_threads());
+		max_dist_omp = (MY_DOUBLE *) malloc(sizeof(MY_DOUBLE *)*omp_get_max_threads());
+		max_ind_omp = (int *) malloc(sizeof(int *)*omp_get_max_threads());
+		total_sum_omp = (double *) malloc(sizeof(double *)*omp_get_max_threads());
+
+		for(i=0;i<omp_get_max_threads();i++){
+			local_vector_omp[i] = (MY_DOUBLE *) my_malloc(dim2*sizeof(MY_DOUBLE),ALIGNMENT);
+		
+			if(local_vector_omp[i]==NULL)
+			{
+				printf("Not enough memory (%d bytes) for %s - exiting\n",
+					dim2*sizeof(MY_DOUBLE), "local_vector");
+				exit(-1);
+			}
+		}
+	}
+
+
+
+	*diff_count = num_of_vectors;
+	if(num_of_vectors==0 || num_of_vectors<num_of_clusters)
+	{
+		return -1.0;
+	}
+	local_vector = (MY_DOUBLE *) my_malloc(dim2*sizeof(MY_DOUBLE),ALIGNMENT);
+	if(local_vector==NULL)
+	{
+		printf("Not enough memory (%d bytes) for %s - exiting\n",
+			dim2*sizeof(MY_DOUBLE), "local_vector");
+		exit(-1);
+	}
+	memset(new_clusters,0,dim2*sizeof(double));
+	memset(cluster_count,0,num_of_clusters*sizeof(int));
+	memset(indices,0,num_of_vectors*sizeof(int));
+
+	for(i=0;i<num_of_vectors;i++)
+	{
+		p1 = &training[i*dim2];
+		expand_vector(p1,local_vector,dim);
+		accumulate_vector(new_clusters,local_vector,dim);
+	}
+	
+	
+	cluster_count[0] = num_of_vectors;
+	for(i=0;i<dim;i++)
+	{
+		clusters[i] = (MY_DOUBLE) new_clusters[i]/(MY_DOUBLE) num_of_vectors;
+	}
+	for(;i<dim2;i++)
+	{
+		clusters[i] = (MY_DOUBLE) 0;
+	}
+	j = -1;
+first_centroid:
+	
+	total_sum = 0.0;
+	max_dist = -1.0;
+
+	for(i=0;i<omp_get_max_threads();i++){
+		max_dist_omp[i] = -1.0;
+		total_sum_omp[i] = 0.0;
+	}
+
+	#pragma omp parallel for private(p1,min_dist)
+	for(i=0;i<num_of_vectors;i++)
+	{
+		int tid = omp_get_thread_num();
+		p1 = &training[i*dim2];
+		expand_vector(p1,local_vector_omp[tid],dim);
+		min_dist = distance2(local_vector_omp[tid],clusters,dim);
+		total_sum_omp[tid] += min_dist;
+		distances[i] = min_dist;
+		if(min_dist>max_dist_omp[tid])
+		{
+			max_dist_omp[tid] = min_dist;
+			max_ind_omp[tid] = i;
+		}
+	}
+
+	for(i=0;i<omp_get_max_threads();i++) total_sum+=total_sum_omp[i];
+	max_ind = max_ind_omp[find_max(max_dist_omp,omp_get_max_threads())];
+
+	if(num_of_clusters==1)
+	{
+		my_free(local_vector);
+		return ((double) total_sum)/((double) num_of_vectors);
+	}
+	
+	j++;
+	if(j==0)
+	{
+		p1 = &training[max_ind*dim2];
+		for(i=0;i<dim;i++)
+		{
+			clusters[i] = (MY_DOUBLE) p1[i];
+		}
+		goto first_centroid;
+	}
+
+	for(;j<num_of_clusters;j++)
+	{
+		p2 = &clusters[j*dim2];
+		p1 = &training[max_ind*dim2];
+		for(i=0;i<dim;i++)
+		{
+			p2[i] = (MY_DOUBLE) p1[i];
+		}
+		for(;i<dim2;i++)
+		{
+			p2[i] = (MY_DOUBLE) 0;
+		}
+		max_dist = -1.0;
+		total_sum = 0.0;
+
+		for(i=0;i<omp_get_max_threads();i++){
+			max_dist_omp[i] = -1.0;
+			total_sum_omp[i] = 0.0;
+		}
+
+		#pragma omp parallel for private(p1,min_dist,dist)
+		for(i=0;i<num_of_vectors;i++){
+			int tid = omp_get_thread_num();
+			p1 = &training[i*dim2];
+			expand_vector(p1,local_vector_omp[tid],dim);
+			min_dist = distances[i];
+			dist = my_distance2
+				(local_vector_omp[tid],p2,dim,min_dist);
+			if(dist<min_dist)
+			{
+				min_dist = dist;
+				distances[i] = dist;
+				indices[i] = j;
+			}
+
+			total_sum_omp[tid] += min_dist;
+			if(min_dist>max_dist)
+			{
+				max_dist_omp[tid] = min_dist;
+				max_ind_omp[tid] = i;
+			}
+		}
+		
+		for(i=0;i<omp_get_max_threads();i++) total_sum+=total_sum_omp[i];
+		max_ind = max_ind_omp[find_max(max_dist_omp,omp_get_max_threads())];
+
+	}
+	my_free(local_vector);
+	
+	return ((double) total_sum)/((double) num_of_vectors);
+}
+
 double kmeans_initialize_sim(MY_DOUBLE *clusters, MY_SHORT *training, int *indices, MY_DOUBLE *distances, int *cluster_count, double *new_clusters, 
 						 int dim, int num_of_clusters, int num_of_vectors, int *diff_count)
 {
@@ -883,139 +1066,6 @@ first_centroid:
 	}
 	my_free(local_vector);
 	
-	return ((double) total_sum)/((double) num_of_vectors);
-}
-
-double kmeans_initialize_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *indices, MY_DOUBLE *distances, int *cluster_count, double *new_clusters, 
-						 int dim, int num_of_clusters, int num_of_vectors, int *diff_count)
-{
-	int i, j;
-	MY_SHORT *p1;
-	MY_DOUBLE *p2;
-	MY_DOUBLE dist;
-	MY_DOUBLE min_dist;
-	MY_DOUBLE max_dist;
-	int max_ind;
-	double total_sum;
-	int dim2 = ALIGN(dim,ALIGNMENT/sizeof(MY_SHORT));
-	MY_DOUBLE *local_vector,**local_vector_omp;
-
-	local_vector_omp =  (MY_DOUBLE **) malloc(sizeof(MY_DOUBLE *)*omp_get_max_threads());
-	for(i=0;i<omp_get_max_threads();i++){
-		local_vector_omp[i] = (MY_DOUBLE *) my_malloc(dim2*sizeof(MY_DOUBLE),ALIGNMENT);
-		if(local_vector_omp[i]==NULL)
-		{
-			printf("Not enough memory (%d bytes) for %s - exiting\n",
-				dim2*sizeof(MY_DOUBLE), "local_vector");
-			exit(-1);
-		}
-	}
-
-	*diff_count = num_of_vectors;
-	if(num_of_vectors==0 || num_of_vectors<num_of_clusters)
-	{
-		return -1.0;
-	}
-	local_vector = (MY_DOUBLE *) my_malloc(dim2*sizeof(MY_DOUBLE),ALIGNMENT);
-	if(local_vector==NULL)
-	{
-		printf("Not enough memory (%d bytes) for %s - exiting\n",
-			dim2*sizeof(MY_DOUBLE), "local_vector");
-		exit(-1);
-	}
-	memset(new_clusters,0,dim2*sizeof(double));
-	memset(cluster_count,0,num_of_clusters*sizeof(int));
-	memset(indices,0,num_of_vectors*sizeof(int));
-
-	for(i=0;i<num_of_vectors;i++)
-	{
-		p1 = &training[i*dim2];
-		expand_vector(p1,local_vector,dim);
-		accumulate_vector(new_clusters,local_vector,dim);
-	}
-	cluster_count[0] = num_of_vectors;
-	for(i=0;i<dim;i++)
-	{
-		clusters[i] = (MY_DOUBLE) new_clusters[i]/(MY_DOUBLE) num_of_vectors;
-	}
-	for(;i<dim2;i++)
-	{
-		clusters[i] = (MY_DOUBLE) 0;
-	}
-	j = -1;
-first_centroid:
-	total_sum = 0.0;
-	max_dist = -1.0;
-	for(i=0;i<num_of_vectors;i++)
-	{
-		p1 = &training[i*dim2];
-		expand_vector(p1,local_vector,dim);
-		min_dist = distance2(local_vector,clusters,dim);
-		total_sum += min_dist;
-		distances[i] = min_dist;
-		if(min_dist>max_dist)
-		{
-			max_dist = min_dist;
-			max_ind = i;
-		}
-	}
-	if(num_of_clusters==1)
-	{
-		my_free(local_vector);
-		return ((double) total_sum)/((double) num_of_vectors);
-	}
-	j++;
-	if(j==0)
-	{
-		p1 = &training[max_ind*dim2];
-		for(i=0;i<dim;i++)
-		{
-			clusters[i] = (MY_DOUBLE) p1[i];
-		}
-		goto first_centroid;
-	}
-	
-	for(;j<num_of_clusters;j++)
-	{
-		p2 = &clusters[j*dim2];
-		p1 = &training[max_ind*dim2];
-		for(i=0;i<dim;i++)
-		{
-			p2[i] = (MY_DOUBLE) p1[i];
-		}
-		for(;i<dim2;i++)
-		{
-			p2[i] = (MY_DOUBLE) 0;
-		}
-		max_dist = -1.0;
-		total_sum = 0.0;
-		#pragma omp parallel for private(p1,min_dist,dist) schedule(static,8640000)
-		for(i=0;i<num_of_vectors;i++)
-		{
-			int tid = omp_get_thread_num();
-			p1 = &training[i*dim2];
-			expand_vector(p1,local_vector_omp[tid],dim);
-			min_dist = distances[i];
-			dist = my_distance2(local_vector_omp[tid],p2,dim,min_dist);
-			if(dist<min_dist)
-			{
-				min_dist = dist;
-				distances[i] = dist;
-				indices[i] = j;
-			}
-				
-			#pragma omp critical
-			{
-				total_sum += min_dist;
-				if(min_dist>max_dist)
-				{
-					max_dist = min_dist;
-					max_ind = i;
-				}
-			}
-		}
-	}
-	my_free(local_vector);
 	return ((double) total_sum)/((double) num_of_vectors);
 }
 
@@ -2067,7 +2117,7 @@ double kmeans_iterate_fast_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *ind
 }
 #endif
 
-void readFile(char *filename,int fromFrame,int num_of_frames,MY_SHORT *vectors,int dim,int type){
+void readYUV(char *filename,int fromFrame,int num_of_frames,MY_SHORT *vectors,int dim,int type){
 	FILE *fp;
 	MY_SHORT **buff;
 
@@ -2150,16 +2200,20 @@ void readFile(char *filename,int fromFrame,int num_of_frames,MY_SHORT *vectors,i
 	printf("succesfully done %d\n",count);
 }
 
-void createFilename(char *o_file,char *cb_file,char *num_file,int dim,int num_of_clusters,int type){
-	SYSTEMTIME lt;
-	GetLocalTime(&lt);
+void readVectors(char *filename,int num_of_vectors,MY_SHORT *vectors,int dim){
+	FILE *fp;
+	fopen_s(&fp,filename,"rb");
+	fread(vectors,sizeof(short),num_of_vectors*dim,fp);
+	fclose(fp);
+}
 
-	sprintf(cb_file, "%scodebooks_%d_%d_%d.bin",o_file,type,dim,num_of_clusters);
-	sprintf(num_file,"%scounters_%d_%d_%d.bin",o_file,type,dim,num_of_clusters);
+void createFilename(char *o_file,char *cb_file,char *num_file,int dim,int num_of_clusters){
+	sprintf(cb_file, "%scodebooks_%d_%d.bin",o_file,dim,num_of_clusters);
+	sprintf(num_file,"%scounters_%d_%d.bin",o_file,dim,num_of_clusters);
 }
 
 
-int start_kmeans(int dim,int num_of_clusters,int num_of_frames,int type,char *i_filename,char *o_filename)
+int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filename,char *o_filename)
 {
 	double ret_val;
 	MY_DOUBLE *clusters;
@@ -2169,36 +2223,24 @@ int start_kmeans(int dim,int num_of_clusters,int num_of_frames,int type,char *i_
 	int *cluster_count;
 	double *new_clusters;
 	double totaltime = 0;
-	char cb_file[100],num_file[100];
+	char cb_file[100],num_file[100],log_file[100];
 	FILE *fp1,*fp2,*fp3;
 	MY_DOUBLE *hyperplane;
-	int num_of_vectors;
-	double mode;
 	int diff_count;
 	int iter;
-	int dim2;
+	int dim2,dim;
 	clock_t start,finish;
 	double duration;
 	struct node *root;
 	struct context *storage;
 
-	if(type==0){
-		mode = 1;
-		num_of_vectors = num_of_frames*(int)ceil((double)XSIZE*mode/dim)*ceil((double)YSIZE*mode/dim);
-	}else if(type==1){
-		mode = 0.5;
-		num_of_vectors = 2*num_of_frames*(int)ceil((double)XSIZE*mode/dim)*ceil((double)YSIZE*mode/dim);
-	}else{
-		mode = 1;
-		num_of_vectors = num_of_frames*(int)ceil((double)XSIZE*mode/dim)*ceil((double)YSIZE*mode/dim);
-	}
-
-	dim = dim*dim;
+	dim = dims*dims;
 	dim2 = ALIGN(dim,ALIGNMENT/sizeof(MY_SHORT));
 
-	createFilename(o_filename,cb_file,num_file,dim,num_of_clusters,type);
+	sprintf(log_file,"%slog.txt",o_filename);
+	createFilename(o_filename,cb_file,num_file,dim,num_of_clusters);
 	
-	if(fopen_s(&fp3,"log.txt","a")!=0)
+	if(fopen_s(&fp3,log_file,"a")!=0)
 		printf("Error creating log file %s\n",num_file);
 
 	clusters = (MY_DOUBLE *) my_malloc(num_of_clusters*dim2*sizeof(MY_DOUBLE),ALIGNMENT);
@@ -2306,21 +2348,26 @@ int start_kmeans(int dim,int num_of_clusters,int num_of_frames,int type,char *i_
 	}
 #endif
 
-	printf("Memory allocation completed, type %d\n",type);
+	printf("Memory allocation completed\n");
+	fprintf(fp3,"Memory allocation completed\n");
 	printf("VQ-dimension: %d\n",dim);
-	printf("Training vector size: %d from %d frames\n",num_of_vectors,num_of_frames);
+	fprintf(fp3,"VQ-dimension: %d\n",dim);
+	printf("Training vector size: %d\n",num_of_vectors);
+	fprintf(fp3,"Training vector size: %d\n",num_of_vectors);
 	printf("Codebook size: %d\n",num_of_clusters);
+	fprintf(fp3,"Codebook size: %d\n",num_of_clusters);
 	
-	if(type==0 || type==1){
-		readFile(i_filename,0,num_of_frames,training,dim,type);
-	}else{
+	#ifdef TRUE
+		readVectors(i_filename,num_of_vectors,training,dim);
+	#else
 		randomize(training,dim,num_of_vectors);
-	}
+	#endif
 
 	iter = 0;
 	diff_count = 1;
 #ifdef KKZ
 	printf("KKZ initialization\n");
+	fprintf(fp3,"KKZ initialization\n");
 	start = clock();
 	ret_val = kmeans_initialize_sim(clusters, training, indices, distances, cluster_count, new_clusters, dim, num_of_clusters, num_of_vectors, &diff_count);
 	kmeans_cluster(clusters, training, indices, distances, cluster_count, new_clusters, dim, num_of_clusters, num_of_vectors, &diff_count);
@@ -2328,6 +2375,7 @@ int start_kmeans(int dim,int num_of_clusters,int num_of_frames,int type,char *i_
 	duration = (double)(finish - start) / CLOCKS_PER_SEC;
 	totaltime+=duration;
 	printf("iter=%3d, ret_val= %15lf, diff=%7d, H=%lf, Time=%8.3lf\n",iter,ret_val,diff_count,entropy(cluster_count,num_of_clusters)/((double) dim),duration);
+	fprintf(fp3,"iter=%3d, ret_val= %15lf, diff=%7d, H=%lf, Time=%8.3lf\n",iter,ret_val,diff_count,entropy(cluster_count,num_of_clusters)/((double) dim),duration);
 	iter++;
 #else
 	printf("Random initialization\n");
@@ -2366,6 +2414,8 @@ int start_kmeans(int dim,int num_of_clusters,int num_of_frames,int type,char *i_
 	}
 
 	printf("Total Time= %.3lf minutes\n",totaltime/60.0);
+	fprintf(fp3,"Total Time= %.3lf minutes\n",totaltime/60.0);
+
 #ifdef FAST_NN
 	free_node(root);
 	my_free(storage->new_clusters2);

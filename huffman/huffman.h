@@ -49,12 +49,12 @@ public:
 	void decode(std::vector<bool> const& v, OutputIterator iter);
 
 private:
-	class Node;
+	struct Node;
 	Node* tree;
 
 	typedef std::map<DataType, std::vector<bool> > encodemap;
 	encodemap encoding;
-	class NodeOrder;
+	struct NodeOrder;
 
 };
 
