@@ -11,6 +11,8 @@
 //#define VERBOSE
 //#define PROFILE
 #define int __int64
+#define ERROR_T 0.1
+
 #define MY_DOUBLE float
 #define MY_SHORT short
 #define KKZ
@@ -54,6 +56,8 @@ double max_ratio = 0.0;
 
 #define XSIZE 720
 #define YSIZE 480
+
+#define round(r) (r > 0.0) ? floor(r + 0.5) : ceil(r - 0.5)
 
 // Returns pseudo-random number, Gaussian-distributed with given mean and standard deviation
 MY_DOUBLE gaussian(MY_DOUBLE mean, MY_DOUBLE std_deviation)
@@ -1044,6 +1048,7 @@ first_centroid:
 		}
 		max_dist = -1.0;
 		total_sum = 0.0;
+		printf("\r%3.2lf",100*(double)j/num_of_clusters);
 		for(i=0;i<num_of_vectors;i++)
 		{
 			p1 = &training[i*dim2];
@@ -1065,7 +1070,7 @@ first_centroid:
 		}
 	}
 	my_free(local_vector);
-	
+	printf("\r");
 	return ((double) total_sum)/((double) num_of_vectors);
 }
 
@@ -2212,6 +2217,26 @@ void createFilename(char *o_file,char *cb_file,char *num_file,int dim,int num_of
 	sprintf(num_file,"%scounters_%d_%d.bin",o_file,dim,num_of_clusters);
 }
 
+double normalizeClusters(MY_DOUBLE *clusters,int dim, int num_of_clusters){
+	int i;
+	for(i=0;i<num_of_clusters*dim;i++){
+		clusters[i] = round(clusters[i]);		
+	}
+}
+
+void checkClusters(MY_DOUBLE *clusters,int dim, int num_of_clusters,MY_SHORT *vectors,int num_of_vectors){
+	int i,j;
+
+	for(i=0;i<num_of_clusters*dim;i+=dim){
+		for(j=0;j<num_of_clusters*dim;j+=dim){
+			if(distance2(&clusters[i],&clusters[j],dim)==0 && i!=j){
+				printf("%d-%d is the same\n",i,j);
+			}
+		}
+	}
+
+
+}
 
 int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filename,char *o_filename)
 {
@@ -2229,8 +2254,11 @@ int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filenam
 	int diff_count;
 	int iter;
 	int dim2,dim;
+	int norm_flag = 0;
 	clock_t start,finish;
 	double duration;
+	double error_diff;
+	double error;
 	struct node *root;
 	struct context *storage;
 
@@ -2382,8 +2410,12 @@ int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filenam
 	initialize(clusters,training,dim,num_of_clusters,num_of_vectors);
 	memset(indices,0,num_of_vectors*sizeof(int));
 #endif
+	error_diff = 0.0;
+	error = ret_val;
 	for(;iter<1000000 && diff_count>0;iter++)
 	{
+		
+
 		start = clock();
 #ifdef FAST_NN
 		ret_val = kmeans_iterate_fast_omp(clusters, training, indices, distances, cluster_count, new_clusters, dim, num_of_clusters, num_of_vectors, &diff_count,root,storage);
@@ -2393,7 +2425,25 @@ int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filenam
 		//ret_val = kmeans_iterate2_h(clusters, training, indices, distances, cluster_count, new_clusters, dim, hyperplane, num_of_vectors, &diff_count);
 #endif
 		
+		error_diff+= fabs(error-ret_val);
+		error = ret_val;
+
+		if(iter%10==0){
+			if(error_diff<ERROR_T && !norm_flag){
+				norm_flag = 1;
+				printf("\n\n\nStart cluster normalization\n\n\n");
+			}
+			error_diff=0.0;
+		}
+
+		if(norm_flag)
+			normalizeClusters(clusters,dim,num_of_clusters);
+		
+
 		if(iter%50==0 || diff_count == 0){
+
+			checkClusters(clusters,dim,num_of_clusters,training,num_of_vectors);
+
 			if(fopen_s(&fp1,cb_file,"wb")!=0)
 				printf("Error creating codebook file %s\n",cb_file);
 

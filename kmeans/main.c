@@ -14,7 +14,6 @@ extern int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_
 __int64 getFileSize(const char *filename){
 	struct _stat64 buf;
 	int fh, result;
-	char buffer[] = "A line to output";
 
 	if( (fh = _open( filename, _O_RDONLY | _O_BINARY )) ==  -1 ){
 		return -1;
@@ -24,6 +23,18 @@ __int64 getFileSize(const char *filename){
 	result = _fstati64( fh, &buf );
 	
 	return buf.st_size;
+}
+
+__int64 getFileSize2(const char *filename){
+	FILE *fp;
+	long long size;
+	
+	fp = fopen(filename,"rb");
+	_fseeki64(fp, 0, SEEK_END); // seek to end of file
+	size = _ftelli64(fp); // get current file pointer
+	fclose(fp);
+
+	return size;
 }
 
 int main(int argc,char *argv[]){
