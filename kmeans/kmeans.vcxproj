@@ -48,6 +48,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+    <TargetName>$(ProjectName)</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -82,7 +83,7 @@
       <DisableSpecificWarnings>4996;4068;4244</DisableSpecificWarnings>
       <OpenMP>GenerateParallelCode</OpenMP>
       <OptimizeForWindowsApplication>false</OptimizeForWindowsApplication>
-      <Parallelization>false</Parallelization>
+      <Parallelization>true</Parallelization>
       <UseIntelOptimizedHeaders>false</UseIntelOptimizedHeaders>
     </ClCompile>
     <Link>

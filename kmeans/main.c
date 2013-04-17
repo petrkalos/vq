@@ -9,6 +9,8 @@
 
 #include <string.h>
 
+#define __int64 long long
+
 extern int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filename,char *o_filename);
 
 __int64 getFileSize(const char *filename){
