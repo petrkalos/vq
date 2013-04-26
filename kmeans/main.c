@@ -11,6 +11,7 @@
 
 #define __int64 long long
 
+extern int max_threads;
 extern int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filename,char *o_filename);
 
 __int64 getFileSize(const char *filename){
@@ -50,7 +51,7 @@ int main(int argc,char *argv[]){
 
 	dims = atoi(argv[1]);
 	num_of_clusters = atoi(argv[2]);
-	omp_set_num_threads(atoi(argv[3]));
+	max_threads = atoi(argv[3]);
 	num_of_vectors = atoi(argv[4]);
 	size = getFileSize(argv[5]);
 

@@ -14,6 +14,8 @@
 
 //#define LINUX
 
+int max_threads;
+
 #ifdef LINUX
 	#include <errno.h>
 	#define __int64 long long
@@ -54,8 +56,8 @@
 #define calc_hyperplane(v1,v2,h,dim) calc_hyperplane_sse2(v1,v2,h,dim)
 #define signed_distance(v,h,c0,dim) signed_distance_sse2(v,h,c0,dim)
 //#define signed_distance(v,h,c0,dim) signed_distance_sse2_16(v,h,c0,dim)
-//#define distance2(v1,v2,dim) distance2_sse2(v1,v2,dim)
-#define distance2(v1,v2,dim) distance2_sse2_16(v1,v2,dim)
+#define distance2(v1,v2,dim) distance2_sse2(v1,v2,dim)
+//#define distance2(v1,v2,dim) distance2_sse2_16(v1,v2,dim)
 #define partial_distance2(v1,v2,dim,min_dist) partial_distance2_sse2(v1,v2,dim,min_dist)
 #define my_distance2(v1,v2,dim,min_dist) distance2(v1,v2,dim)
 #define accumulate_vector(v1,v2,dim) accumulate_vector_sse2(v1,v2,dim)
@@ -832,7 +834,7 @@ double kmeans_initialize_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *indic
 	int dim2 = ALIGN(dim,ALIGNMENT/sizeof(MY_SHORT));
 	clock_t start,finish;
 
-
+	omp_set_num_threads(12);
 	*diff_count = num_of_vectors;
 	if(num_of_vectors==0 || num_of_vectors<num_of_clusters)
 	{
@@ -2017,11 +2019,6 @@ double kmeans_iterate_fast_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *ind
 						   int dim, int num_of_clusters, int num_of_vectors, int *diff_count, struct node *root, struct context *storage)
 {
 	int i, j;
-	MY_SHORT *p1;
-	//MY_DOUBLE dist;
-	//MY_DOUBLE *local_vector;
-	MY_DOUBLE min_dist[2];
-	int min_ind;
 	double total_sum;
 	int dim2 = ALIGN(dim,ALIGNMENT/sizeof(MY_SHORT));
 
@@ -2051,17 +2048,12 @@ double kmeans_iterate_fast_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *ind
 	printf("        ");
 #endif
 #endif
-	#pragma omp parallel private(min_ind,p1,min_dist,i)
+	#pragma omp parallel
 	{
-		#if 0
-		//local_vector = (MY_DOUBLE *) my_malloc(dim2*sizeof(MY_DOUBLE),ALIGNMENT);
-		if(local_vector==NULL)
-		{
-			printf("Not enough memory (%d bytes) for %s - exiting\n",
-				dim2*sizeof(MY_DOUBLE), "local_vector");
-			exit(-1);
-		}
-		#endif
+		int min_ind;
+		MY_SHORT *p1;
+		MY_DOUBLE min_dist[2];
+		int i;
 		#pragma omp for
 		for(i=0;i<num_of_vectors;i++){
 			#ifdef VERBOSE
@@ -2081,9 +2073,6 @@ double kmeans_iterate_fast_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *ind
 			}
 			#endif
 			p1 = &training[i*dim2];
-			//expand_vector(p1,local_vector,dim);
-			//min_ind = indices[i];
-			//min_dist[0] = distance2(p1,&clusters[min_ind*dim2],dim);
 			min_ind = fast_NN(p1,root,clusters,dim,min_dist);
 			#pragma omp critical
 			{
@@ -2098,10 +2087,10 @@ double kmeans_iterate_fast_omp(MY_DOUBLE *clusters, MY_SHORT *training, int *ind
 				total_sum += min_dist[0];
 			}
 		}
-		//my_free(local_vector);
 	}
 	for(j=0;j<num_of_clusters;j++)
 	{
+		int min_ind;
 		if((min_ind=cluster_count[j])>0)
 		{
 			double *p2;
@@ -2407,6 +2396,8 @@ int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filenam
 #ifdef KKZ
 	printf("KKZ initialization\n");
 	fprintf(fp3,"KKZ initialization\n");
+
+	omp_set_num_threads(12);
 	start = clock();
 	if(omp_get_max_threads()==1)
 		ret_val = kmeans_initialize_sim(clusters, training, indices, distances, cluster_count, new_clusters, dim, num_of_clusters, num_of_vectors, &diff_count);
@@ -2425,7 +2416,7 @@ int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filenam
 	initialize(clusters,training,dim,num_of_clusters,num_of_vectors);
 	memset(indices,0,num_of_vectors*sizeof(int));
 #endif
-
+	omp_set_num_threads(max_threads);
 	error_old = FLT_MAX;//ret_val;
 	for(;iter<1000000 && diff_count>0;iter++)
 	{
@@ -2463,7 +2454,7 @@ int start_kmeans(int dims,int num_of_clusters,int num_of_vectors,char *i_filenam
 
 		if(iter%50==0 || diff_count == 0){
 
-			checkClusters(clusters,dim,num_of_clusters,training,num_of_vectors);
+			if(ERROR_T!=0.0) checkClusters(clusters,dim,num_of_clusters,training,num_of_vectors);
 
 			if(fopen_s(&fp1,cb_file,"wb")!=0)
 				printf("Error creating codebook file %s\n",cb_file);
