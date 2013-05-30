@@ -28,7 +28,6 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
     end
     
     cnt = log10(cnt);
-    
     splits = [1 splits' length(cnt)];
     
     
@@ -46,6 +45,10 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
     end
     
     disp(energy(splits));
+    
+    fp = fopen('splits.bin','wb');
+    fwrite(fp,energy(splits),'int64');
+    fclose(fp);
     
 end
 
