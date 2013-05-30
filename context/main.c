@@ -24,9 +24,11 @@
 typedef unsigned __int64 uint64;
 typedef __int64 int64;
 
-#define NOC 4
+#define NOC 16
 
-const int64 cat[3][NOC+1] = {{-1,28,245,1970,644402},{-1,30,579,6498,572890},{-1,30,579,6498,572890}};
+//const int64 cat[1][NOC+1] = {{-1,28,245,1970,644402},{-1,30,579,6498,572890},{-1,30,579,6498,572890}};
+
+int64 cat[NOC+1];
 
 const int XSIZE = 720;
 const int YSIZE = 480;
@@ -46,6 +48,14 @@ void check_memory(const char *msg,void *ptr){
 		printf("%s\n",msg);
 		exit(ERROR_NOT_ENOUGH_MEMORY);
 	}
+}
+
+void read_splits(){
+	FILE *fp;
+	fp = fopen("../MATLAB/splits.bin","rb");
+	fread(cat,sizeof(int64),NOC+1,fp);
+	fclose(fp);
+
 }
 
 void init_blocks(block *****bt,int num_of_frames,int dims,int type){
@@ -253,11 +263,11 @@ void readCodebook(char *filename,float *cb,int num_of_clusters,int dim){
 
 }
 
-int getCategory(int i,int type){
+int getCategory(int i){
 	int j;
 
 	for(j=0;j<NOC;j++){
-		if((energy[i])>cat[type][j] && energy[i]<=cat[type][j+1])
+		if((energy[i])>cat[j] && energy[i]<=cat[j+1])
 			return j;
 	}
 
@@ -288,7 +298,7 @@ int quantizeBlock(float *cb,int num_of_clusters,block *bt,int dim,int type){
 	min_ind = fastNN(bt->resi,root,cb,dim,min_dist);
 
 	bt->index = min_ind;
-	bt->category = getCategory(min_ind,type);
+	bt->category = getCategory(min_ind);
 
 	return min_dist[0];
 }
@@ -344,7 +354,6 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
-
 	type = atoi(argv[1]);
 	num_of_frames = atoi(argv[2]);
 	dom_step = num_of_frames/(atoi(argv[3]));
@@ -354,6 +363,8 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 	
+	read_splits();
+
 	if(dom_step>num_of_frames) dom_step = num_of_frames;
 
 	energy = (float *) malloc(sizeof(float)*num_of_clusters);
