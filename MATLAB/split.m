@@ -23,7 +23,7 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
                 splits(j) = i;
             end
             j= j+1;
-            count = 0;
+            count = count-step;
         end
     end
     

@@ -24,7 +24,7 @@
 typedef unsigned __int64 uint64;
 typedef __int64 int64;
 
-#define NOC 16
+#define NOC 8
 
 //const int64 cat[1][NOC+1] = {{-1,28,245,1970,644402},{-1,30,579,6498,572890},{-1,30,579,6498,572890}};
 
@@ -37,8 +37,9 @@ static uint64 total_vectors = 0;
 
 typedef struct{
 	float *resi;
-	char category;
+	//char category;
 	int index;
+	float energy;
 }block;
 
 float *energy;
@@ -55,7 +56,7 @@ void read_splits(){
 	fp = fopen("../MATLAB/splits.bin","rb");
 	fread(cat,sizeof(int64),NOC+1,fp);
 	fclose(fp);
-
+	cat[0] = -1;
 }
 
 void init_blocks(block *****bt,int num_of_frames,int dims,int type){
@@ -82,7 +83,7 @@ void init_blocks(block *****bt,int num_of_frames,int dims,int type){
 				check_memory("Block struct memory",(*bt)[frame][m][n]);
 				(*bt)[frame][m][n]->resi = (float *)_aligned_malloc(sizeof(float)*dim,16);
 				check_memory("Block residual memory",(*bt)[frame][m]);
-				(*bt)[frame][m][n]->category = -1;
+//				(*bt)[frame][m][n]->category = -1;
 				(*bt)[frame][m][n]->index = -1;
 			}
 		}
@@ -263,15 +264,15 @@ void readCodebook(char *filename,float *cb,int num_of_clusters,int dim){
 
 }
 
-int getCategory(int i){
+int getCategory(float en){
 	int j;
 
 	for(j=0;j<NOC;j++){
-		if((energy[i])>cat[j] && energy[i]<=cat[j+1])
+		if((en)>cat[j] && en<=cat[j+1])
 			return j;
 	}
 
-	return 3;
+	return j;
 }
 
 int distance(short *vector1, short *vector2, int dim,int min_dist)
@@ -298,8 +299,9 @@ int quantizeBlock(float *cb,int num_of_clusters,block *bt,int dim,int type){
 	min_ind = fastNN(bt->resi,root,cb,dim,min_dist);
 
 	bt->index = min_ind;
-	bt->category = getCategory(min_ind);
-
+	bt->energy = energy[min_ind];
+	//bt->category = getCategory(bt->energy);
+	
 	return min_dist[0];
 }
 
@@ -320,10 +322,10 @@ void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int x_size){
 	}else if(currIdx==0 || currIdx+1==x_size){	//first and last column
 		cnt[258][ind]++;
 	}else{
-		cat[0] = bt[currIdy-1][currIdx-1]->category;
-		cat[1] = bt[currIdy-1][currIdx]->category;
-		cat[2] = bt[currIdy-1][currIdx+1]->category;
-		cat[3] = bt[currIdy][currIdx-1]->category;
+//		cat[0] = bt[currIdy-1][currIdx-1]->category;
+//		cat[1] = bt[currIdy-1][currIdx]->category;
+//		cat[2] = bt[currIdy-1][currIdx+1]->category;
+//		cat[3] = bt[currIdy][currIdx-1]->category;
 
 		context = cat[0]*64+cat[1]*16+cat[2]*4+cat[3];
 
@@ -332,11 +334,46 @@ void getContext(block ***bt,uint64 **cnt,int currIdy,int currIdx,int x_size){
 	total_vectors++;
 }
 
+void getContext2(block ***bt,uint64 **cnt,int currIdy,int currIdx,int x_size){
+	float cat[4];
+	int ind;
+	int context;
+	ind = bt[currIdy][currIdx]->index;
+	if(ind<0){
+		printf("index error\n");
+		return;
+	}
+
+	if(currIdy==0 && currIdx==0){	//upper left
+		context = getCategory(bt[currIdy][currIdx]->energy);
+	}else if(currIdy==0){	//first row
+		context = getCategory(bt[currIdy][currIdx-1]->energy);
+	}else if(currIdx==0){	//first column
+		cat[1] = bt[currIdy-1][currIdx]->energy;
+		cat[2] = bt[currIdy-1][currIdx+1]->energy;
+		context = getCategory((cat[1]+cat[2])/2);
+	}else if(currIdx+1==x_size){
+		cat[0] = bt[currIdy-1][currIdx-1]->energy;
+		cat[1] = bt[currIdy-1][currIdx]->energy;
+		cat[3] = bt[currIdy][currIdx-1]->energy;
+		context = getCategory((cat[0]+cat[1]+cat[3])/3);
+	}else{
+		cat[0] = bt[currIdy-1][currIdx-1]->energy;
+		cat[1] = bt[currIdy-1][currIdx]->energy;
+		cat[2] = bt[currIdy-1][currIdx+1]->energy;
+		cat[3] = bt[currIdy][currIdx-1]->energy;
+		
+		context = getCategory((cat[0]+cat[1]+cat[2]+cat[3])/4);
+	}
+	cnt[context][ind]++;
+	total_vectors++;
+}
+
 int main(int argc, char *argv[]){
 	int num_of_frames;
 	char filename[100];
 	const int num_of_clusters = 65536;
-	const int num_of_contexts = 256+3;
+	const int num_of_contexts = 16;
 	int dim = 16;
 	int dims = (int) sqrt(dim+0.0);
 	int i,j,dom,dom_step,type;
@@ -408,7 +445,7 @@ int main(int argc, char *argv[]){
 		for(frame=0;frame<dom_step;frame++){
 			for(i=0;i<(mode*YSIZE)/dims;i++){
 				for(j=0;j<(mode*XSIZE)/dims;j++){
-					getContext(bt[frame],cnt,i,j,(mode*XSIZE)/dims);
+					getContext2(bt[frame],cnt,i,j,(mode*XSIZE)/dims);
 				}
 			}
 		}
@@ -423,7 +460,7 @@ int main(int argc, char *argv[]){
 	dur = (double)(finish - start) / CLOCKS_PER_SEC;
 	printf("\nTotal duration = %.2lf seconds\n",dur);
 
-	sprintf(filename,"context%d.bin",type);
+	sprintf(filename,"../MATLAB/context%d_2.bin",type);
 	fopen_s(&fp,filename,"wb");
 	if(fp!=NULL){
 
