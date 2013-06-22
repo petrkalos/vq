@@ -1,4 +1,4 @@
-function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
+function [ splits,out ] = split( name,cbfile,cntfile,cblen,dim,n )
 %SPLIT Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -15,16 +15,13 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
     j=1;
     splits = zeros(n-1,1);
     for i=1:length(cnt)
-        count = count + cnt(i);
+        
         if(count>step)
-            if(i>2 && abs(count-step)>abs((count-cnt(i-1))-step))
-                splits(j) = i-1;
-            else
-                splits(j) = i;
-            end
-            j= j+1;
-            count = count-step;
+            splits(j) = i;
+            j = j+1;
+            count = 0;%count-step;
         end
+        count = count + cnt(i);
     end
     
     cnt = log10(cnt);
@@ -37,7 +34,7 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
             out{i} = cnt(splits(i):splits(i+1)); 
         end
     end
-    
+ 
     semilogx(cnt);
     for i=1:length(splits)
         hold on;
@@ -45,10 +42,11 @@ function [ splits,out ] = split( cbfile,cntfile,cblen,dim,n )
     end
     
     disp(energy(splits));
-    
+    xlabel('Cluster');
+    ylabel('Cluster Frequency log');
+    title(name);
     fp = fopen('splits.bin','wb');
     fwrite(fp,energy(splits),'int64');
     fclose(fp);
-    
 end
 

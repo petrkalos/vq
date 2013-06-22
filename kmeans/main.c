@@ -55,6 +55,8 @@ int main(int argc,char *argv[]){
 	num_of_vectors = atoi(argv[4]);
 	size = getFileSize(argv[5]);
 
+	omp_set_num_threads(max_threads);
+
 	if(size==-1){
 		printf("Error opening input file\n");
 		return 1;
